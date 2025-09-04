@@ -1,78 +1,78 @@
-# utils/chat_bot_example.js 程序流程（含时序图）
+# utils/chat_bot_example.js 流程图（修正版）
 
-**目标**
-- 说明 `utils/chat_bot_example.js` 的整体执行流程与数据/记忆流转；给出可视化时序图，便于理解与排错。
+本流程图基于源码梳理整体逻辑，已避免 Mermaid 解析冲突（去除引号、花括号等特殊字符）。
 
-**概览**
-- **功能**: 基于 LangGraph 的 `MessagesAnnotation` 构建单节点对话流，使用 `MemorySaver` 保存对话状态；调用 Google Gemini (`@langchain/google-genai`) 生成回复。
-- **入口**: 文件末尾直接调用 `main()` 启动 CLI 交互；同时导出 `runTime(userText, threadId)` 供程序化调用。
-- **记忆**: 通过 `configurable.thread_id` 把同一线程的消息聚合；更换 `thread_id` 等同于开启全新会话。
-- **模型**: `utils/generate_mode.js` 中创建的 `llm` 读取 `.env` 的 `GOOGLE_API_KEY`（`dotenv.config()`）。
+```text
+简洁文本流程图（逻辑骨架）
 
-**代码结构（文件与行号）**
-- `callModel(state)`: 调用大模型并返回 `{ messages: response }`，由节点 `model` 执行。
-  - `utils/chat_bot_example.js:21`
-- `workflow`: `StateGraph(MessagesAnnotation)`，串联 `START -> model -> END`。
-  - `utils/chat_bot_example.js:27`
-- `app`: `workflow.compile({ checkpointer: new MemorySaver() })`。
-  - `utils/chat_bot_example.js:33`
-- `runTime(userText, threadId)`: 组装 `configurable.thread_id`，`app.invoke()`，返回最终回复与线程 ID。
-  - `utils/chat_bot_example.js:42`
-- `main()`: 基于 `readline` 的 CLI 循环，支持命令 `/new`（新线程）、`/exit`（退出）。
-  - `utils/chat_bot_example.js:52`
-- 模型定义：`llm = new ChatGoogleGenerativeAI({ model: "gemini-2.5-flash", ... })`。
-  - `utils/generate_mode.js:1`
+[初始化]
+  ├─ 导入依赖 → 构建 Prompt → 构建 Chain → 配置 trimMessages
+  ├─ 定义节点 callModel（裁剪 → 调用 chain → 返回 messages）
+  └─ 构建 StateGraph：START → model → END；compile 使用 MemorySaver → app
 
-**时序图**
-```mermaid
-sequenceDiagram
-  autonumber
-  participant U as User
-  participant CLI as CLI(main + readline)
-  participant RT as runTime(text, threadId)
-  participant App as LangGraph App
-  participant CP as Checkpointer(MemorySaver)
-  participant N as Node "model"(callModel)
-  participant LLM as ChatGoogleGenerativeAI
+[两种运行路径]
+  1) runTime(userText, threadId?)
+     → 生成/复用 thread_id
+     → app.invoke({ messages }, { thread_id })
+     → 取最后一条 AI 消息
+     → 返回 { reply, threadId }
 
-  U->>CLI: 输入消息或命令
-  alt /new
-    CLI->>CLI: 生成新的 UUID 作为 threadId
-    CLI-->>U: 显示新线程ID
-  else /exit
-    CLI-->>U: 退出
-  else 文本输入
-    CLI->>RT: runTime(text, threadId)
-    RT->>App: invoke({messages:[user]}, config.thread_id)
-    App->>CP: 读取该 thread_id 的对话状态
-    App->>N: 执行节点 callModel(state)
-    N->>LLM: llm.invoke(state.messages)
-    LLM-->>N: 返回 AI 回复(消息)
-    N-->>App: { messages: response }
-    App->>CP: 持久化新状态(消息追加)
-    App-->>RT: 输出完整消息序列
-    RT-->>CLI: 取最后一条作为 `reply`
-    CLI-->>U: 打印回复
-  end
+  2) CLI main()
+     → 生成 threadId 并提示
+     → 循环读取输入：
+         · '/exit' → 退出
+         · '/new'  → 重置 threadId
+         · 其他文本 → app.streamEvents({ messages }, { version:v2, thread_id })
+           ↳ 仅处理 on_chat_model_stream：拼接 chunk 内容并输出；流结束换行
+           ↳ 异常时打印错误并继续
 ```
 
-**关键点解析**
-- **消息聚合**: `callModel` 返回 `{ messages: response }`，LangGraph 会将 AI 消息追加到会话消息数组中。
-- **线程 ID**: `runTime` 若未传入 `threadId`，会生成新的 UUID；同一 `thread_id` 下的多次调用共用对话上下文。
-- **记忆介质**: `MemorySaver` 为进程内内存检查点；若进程重启，历史不会保留。需要持久化可替换为外部存储实现的 checkpointer。
-- **CLI 命令**: `/new` 重置为新 `threadId`；`/exit` 结束循环；其他输入会触发一次模型调用并打印回复。
+```mermaid
+flowchart LR
+  %% =============== 初始化与图构建 ===============
+  subgraph Init[初始化与图构建]
+    A0[导入依赖<br/>langgraph core uuid readline] --> A1[构建 Prompt<br/>system 加 MessagesPlaceholder]
+    A1 --> A2[构建 Chain<br/>prompt.pipe llm]
+    A2 --> A3[消息裁剪器<br/>trimMessages 配置]
+    A3 --> A4[节点函数 callModel<br/>裁剪 然后 调用 chain 返回 messages]
+    A4 --> A5[构建 StateGraph<br/>添加节点 model]
+    A5 --> A6[添加连边<br/>START 到 model 到 END]
+    A6 --> A7[编译工作流<br/>MemorySaver 作为 checkpointer]
+  end
 
-**运行与集成**
-- **直接运行 CLI**: `node utils/chat_bot_example.js`（项目 `package.json` 已为 ESM，直接运行即可）。
-- **程序化调用**:
-  - 导入：`import { runTime } from "./utils/chat_bot_example.js";`
-  - 使用：`const { reply, threadId } = await runTime("你好", existingThreadId);`
+  %% =============== CLI 交互主循环 ===============
+  subgraph CLI[CLI 交互 main]
+    B0[启动 main<br/>生成并打印 threadId] --> B1{读取输入}
+    B1 -- /exit --> B9[关闭并退出]
+    B1 -- /new --> B2[重置 threadId 并提示] --> B1
+    B1 -- 普通文本 --> B3[调用 app.streamEvents<br/>传入 thread_id]
+    B3 --> B4{事件是 on_chat_model_stream 吗}
+    B4 -- 是 --> B5[解析 chunk content<br/>拼接并输出]
+    B5 --> B6{首次输出}
+    B6 -- 是 --> B7[打印前缀 助手] --> B8[写入片段]
+    B6 -- 否 --> B8
+    B4 -- 否 --> B10[忽略其他事件]
+    B8 --> B11[流结束换行] --> B1
+  end
 
-**注意事项**
-- `index.mjs` 当前以默认导出方式使用本模块：`import chatBotExample from "./utils/chat_bot_example.js";`，而文件实际导出为命名函数 `runTime` 并且会在导入时执行 `main()`。如需按 `index.mjs` 的示例调用，应二选一：
-  - 修改导入：`import { runTime as chatBotExample } from "./utils/chat_bot_example.js";`
-  - 或导出默认：在 `utils/chat_bot_example.js` 增加 `export default runTime;` 并移除/条件化 `main()` 的自执行。
-- `GOOGLE_API_KEY` 需在 `.env` 中配置，避免将密钥写入代码或日志。
+  %% =============== 一次性函数调用 ===============
+  subgraph Once[一次性调用 runTime]
+    C0[传入 userText 与可选 threadId] --> C1[生成或复用 thread_id]
+    C1 --> C2[调用 app.invoke<br/>传入 messages 与 config]
+    C2 --> C3[取最后一条 AI 消息]
+    C3 --> C4[返回 reply 与 threadId]
+  end
 
-**小结**
-- 该脚本是“单节点 LangGraph + 线程化记忆”的最小闭环：输入 -> `runTime` -> `app.invoke` -> `callModel/llm` -> 追加消息 -> 输出最后一条回复。配合 `thread_id` 即可获得“可复用上下文”的对话体验。
+  A7 --> Once
+  A7 --> CLI
+```
+
+## 关键点
+- 记忆分线程：MemorySaver 配合 `configurable.thread_id` 持久化上下文；输入 `/new` 更换会话轨迹。
+- 流式输出：`app.streamEvents` 仅消费 `on_chat_model_stream`，增量拼接输出；异常打印错误并继续循环。
+- 消息裁剪：`trimMessages` 使用 last 策略，保留 system，近似 token 计数避免上下文过长。
+- 图结构：极简单链路 START → model → END；`model` 节点即 `callModel`。
+- 复用：CLI 交互与 `runTime` 共用同一 `app` 与记忆机制。
+
+文件：`utils/chat_bot_example.js`
+入口：文件底部 `main()`（可 `node utils/chat_bot_example.js` 运行）

@@ -6,8 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "translate": "node utils/translate_cli.js",
-    "chat": "node utils/translate_bot_example.js"
+    "translate": "node utils/translate_bot_example.js",
+    "chat": "node utils/chat_bot_example.js"
   },
   "dependencies": {
     "@langchain/core": "^0.3.73",

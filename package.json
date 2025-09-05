@@ -10,9 +10,11 @@
     "chat": "node utils/chat_bot_example.js"
   },
   "dependencies": {
+    "@langchain/community": "^0.3.54",
     "@langchain/core": "^0.3.73",
     "@langchain/google-genai": "^0.2.17",
     "@langchain/langgraph": "^0.4.9",
+    "@langchain/textsplitters": "^0.1.0",
     "dotenv": "^17.2.2",
     "langchain": "^0.3.32",
     "uuid": "^11.1.0"

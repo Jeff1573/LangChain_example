@@ -9,11 +9,16 @@ import { v4 as uuidv4 } from "uuid";
 import llm from "./generate_mode.js";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+
+import { trimMessages } from "@langchain/core/messages";
+import { buildInMemoryRetriever } from "./rag/retriever.js";
 import {
   ChatPromptTemplate,
   MessagesPlaceholder,
+  PromptTemplate,
 } from "@langchain/core/prompts";
-import { trimMessages } from "@langchain/core/messages";
+import { createStuffDocumentsChain } from "langchain/chains/combine_documents";
+import { createRetrievalChain } from "langchain/chains/retrieval";
 
 // ① 实例化 Gemini（速度优先可用 "gemini-2.0-flash"；稳妥可用 "gemini-1.5-pro"）
 
@@ -25,6 +30,41 @@ const prompt = ChatPromptTemplate.fromMessages([
 ]);
 // === 组装链：prompt -> 模型 ===
 const chain = prompt.pipe(llm);
+
+// RAG 用 Prompt（注意含 {context}）
+const ragPrompt = ChatPromptTemplate.fromMessages([
+  [
+    "system",
+    [
+      "You are a helpful assistant. Answer strictly based on the given CONTEXT.",
+      "If the answer is not in the context, say you don't know.",
+      "Use Chinese in your reply. At the end, list SOURCES (unique) from metadata.",
+      "",
+      "CONTEXT:",
+      "{context}",
+    ].join("\n"),
+  ],
+  // 让对话历史也参与（链会用 `chat_history` 这个变量名）
+  new MessagesPlaceholder("chat_history"),
+  ["human", "{input}"],
+]);
+// 可选：自定义“文档格式化”，把每段的来源也写进去，便于模型引用
+const documentPrompt = PromptTemplate.fromTemplate(
+  "SOURCE: {source}\n{page_content}"
+);
+
+const retriever = await buildInMemoryRetriever();
+
+const docChain = await createStuffDocumentsChain({
+  llm, // 复用你现有的 Gemini Chat 模型实例
+  prompt: ragPrompt, // 必须包含 {context}
+  documentPrompt, // 把每段的 source 带上
+});
+
+const ragChain = await createRetrievalChain({
+  retriever,
+  combineDocsChain: docChain,
+});
 
 // === 定义裁剪器：控制历史长度，防止窗口爆掉 ===
 const trimmer = trimMessages({

@@ -11,7 +11,7 @@ import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
 import { trimMessages } from "@langchain/core/messages";
-import { buildInMemoryRetriever } from "../src/rag/retriever.js";
+import { buildInMemoryRetriever, buildChromaRetriever } from "../rag/retriever.js";
 import {
   ChatPromptTemplate,
   MessagesPlaceholder,
@@ -53,7 +53,15 @@ const documentPrompt = PromptTemplate.fromTemplate(
   "SOURCE: {source}\n{page_content}"
 );
 
-const retriever = await buildInMemoryRetriever();
+// 环境变量配置：USE_CHROMA=true 使用 ChromaDB，否则使用内存存储
+const USE_CHROMA = process.env.USE_CHROMA === 'true';
+const CHROMA_URL = process.env.CHROMA_URL || 'http://localhost:8000';
+
+const retriever = USE_CHROMA 
+  ? await buildChromaRetriever()
+  : await buildInMemoryRetriever();
+
+console.log(`🔧 使用向量存储类型: ${USE_CHROMA ? 'ChromaDB (持久性)' : 'MemoryVectorStore (内存)'}`);
 
 const docChain = await createStuffDocumentsChain({
   llm, // 复用你现有的 Gemini Chat 模型实例

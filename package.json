@@ -6,8 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "node index.js",
-    "translate": "node utils/translate_bot_example.js",
-    "chat": "node utils/chat_bot_example.js"
+    "translate": "node src/utils/translate_bot_example.js",
+    "chat": "node  src/utils/chat_bot_example.js"
   },
   "dependencies": {
     "@langchain/community": "^0.3.54",
@@ -15,6 +15,7 @@
     "@langchain/google-genai": "^0.2.17",
     "@langchain/langgraph": "^0.4.9",
     "@langchain/textsplitters": "^0.1.0",
+    "chromadb": "^3.0.14",
     "dotenv": "^17.2.2",
     "langchain": "^0.3.32",
     "uuid": "^11.1.0"

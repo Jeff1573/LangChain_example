@@ -11,7 +11,7 @@ import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 
 import { trimMessages } from "@langchain/core/messages";
-import { buildInMemoryRetriever } from "./rag/retriever.js";
+import { buildInMemoryRetriever } from "../src/rag/retriever.js";
 import {
   ChatPromptTemplate,
   MessagesPlaceholder,
@@ -123,7 +123,7 @@ export async function runTime(userText, threadId) {
 async function main() {
   let threadId = uuidv4();
   console.log("当前线程:", threadId);
-  console.log("💬 Chat started. Commands: /new 开新会话, /exit 退出");
+  console.log("💬 Chat started. Commands: /new 开新会话, /rag <问题> 知识库检索, /exit 退出");
 
   // 解释：读取输入流，创建一个readline接口，用于读取用户输入
   const rl = readline.createInterface({ input, output });
@@ -135,6 +135,23 @@ async function main() {
     if (text === "/new") {
       threadId = uuidv4();
       console.log("✅ 新线程:", threadId);
+      continue;
+    }
+
+    // RAG 模式：从知识库检索并回答
+    if (text.startsWith("/rag")) {
+      const question = text.slice(4).trim();
+      if (!question) {
+        console.log("用法: /rag <问题>");
+        continue;
+      }
+      try {
+        const result = await ragChain.invoke({ input: question, chat_history: [] });
+        const reply = result?.answer ?? result?.output_text ?? "(无答案)";
+        console.log("📚:", reply);
+      } catch (err) {
+        console.error("RAG 调用失败：", err);
+      }
       continue;
     }
 

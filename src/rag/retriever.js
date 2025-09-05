@@ -1,6 +1,6 @@
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
-import { DirectoryLoader } from "@langchain/community/document_loaders/fs/directory";
+import { DirectoryLoader } from "langchain/document_loaders/fs/directory";
 import { PDFLoader } from "@langchain/community/document_loaders/fs/pdf";
 import { TextLoader } from "langchain/document_loaders/fs/text"; // 文本加载器仍在主包入口
 import { MemoryVectorStore } from "langchain/vectorstores/memory";

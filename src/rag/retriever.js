@@ -58,7 +58,7 @@ export async function buildChromaRetriever() {
 
   // 4) 存入向量库（ChromaDB 持久性存储），并转成 Retriever
   const vectorstore = await buildChromaVectorStore(docs, embeddings);
-  return vectorstore.asRetriever({ k: 4 });
+  return vectorstore.asRetriever({ k: 20 });
 }
 
 /** 

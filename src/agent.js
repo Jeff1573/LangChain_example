@@ -41,17 +41,23 @@ dotenv.config();
 // 默认使用 "gemini-2.5-flash" 模型，支持流式输出
 
 // === RAG 检索器配置 ===
-// 环境变量配置：USE_CHROMA=true 使用 ChromaDB，否则使用内存存储
-const USE_CHROMA = process.env.USE_CHROMA === 'true';
+// 强制使用 ChromaDB 持久化存储，确保数据安全
 const CHROMA_URL = process.env.CHROMA_URL || 'http://localhost:8000';
 
-// 初始化检索器（支持内存和 ChromaDB 两种模式）
-// 使用更高的 k 值以获取更多相关结果
-const retriever = USE_CHROMA 
-  ? await buildChromaRetriever({ k: 30 })
-  : await buildInMemoryRetriever({ k: 15 });
+// 移除内存存储选项，仅支持 ChromaDB
+console.log(`🏗️  强制使用 ChromaDB 持久化存储模式`);
+console.log(`🔗 ChromaDB 地址: ${CHROMA_URL}`);
 
-console.log(`🔧 使用向量存储类型: ${USE_CHROMA ? 'ChromaDB (持久性)' : 'MemoryVectorStore (内存)'}`);
+// 初始化检索器（仅支持 ChromaDB 模式）
+// 针对大文件优化：使用更高的 k 值以获取更多相关结果
+const retriever = await buildChromaRetriever({ 
+  k: 30,
+  chromaUrl: CHROMA_URL,
+  batchSize: 100 // 分批处理以避免大文件问题
+});
+
+console.log(`🔧 使用向量存储类型: ChromaDB (持久性存储)`);
+console.log(`📚 知识库初始化完成，检索器已准备好`);
 console.log(`📚 知识库初始化完成，检索器已准备好`);
 
 // === Prompt 模板定义 ===

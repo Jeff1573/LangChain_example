@@ -61,13 +61,15 @@ const prompt = ChatPromptTemplate.fromMessages([
 ]);
 
 // RAG 专用 Prompt 模板（包含上下文和来源信息）
+// Task 4: 优化RAG Prompt模板 - 平衡检索内容与对话历史，支持多轮对话
 const ragPrompt = ChatPromptTemplate.fromMessages([
   [
     "system",
     [
-      "You are a helpful assistant. Answer strictly based on the given CONTEXT.",
-      "If the answer is not in the context, say you don't know.",
-      "Use Chinese in your reply. At the end, list SOURCES (unique) from metadata.",
+      "你是一个有帮助的智能助手。请严格基于给定的 CONTEXT 来回答问题。",
+      "如果答案不在上下文中，请诚实地说你不知道。",
+      "请用中文回答。在回答结束后，请列出 SOURCES（去重）来自元数据。",
+      "请结合对话历史和检索到的上下文信息来提供连贯的回答。",
       "",
       "CONTEXT:",
       "{context}",
@@ -117,17 +119,70 @@ const callModel = async (state) => {
   return { messages: response }; // 返回给 LangGraph 的消息状态
 };
 
+/**
+ * RAG 专用状态机节点：处理检索增强生成
+ * @param {typeof MessagesAnnotation.State} state - LangGraph 状态对象
+ * @returns {Object} 返回新的消息状态
+ */
+// Task 1: 创建RAG专用状态机节点 - 集成检索器和会话记忆
+const callRAGModel = async (state) => {
+  // 获取最新的用户消息
+  const lastMessage = state.messages[state.messages.length - 1];
+  const userInput = lastMessage.content;
+  
+  // 构建对话历史（排除当前用户消息）
+  const chatHistory = state.messages.slice(0, -1);
+  
+  try {
+    // 使用 RAG 检索链进行检索增强生成
+    const result = await ragChain.invoke({
+      input: userInput,
+      chat_history: chatHistory // 传入历史对话上下文
+    });
+    
+    // 提取回复内容
+    const reply = result?.answer ?? result?.output_text ?? "⚠️ 未找到相关信息";
+    
+    // 返回 AI 消息格式
+    return {
+      messages: [{
+        role: "assistant",
+        content: reply
+      }]
+    };
+  } catch (error) {
+    console.error("RAG 检索失败：", error.message);
+    return {
+      messages: [{
+        role: "assistant",
+        content: `❌ RAG 检索失败：${error.message}`
+      }]
+    };
+  }
+};
+
 // === StateGraph 状态机架构 ===
-// 构建工作流：START -> model -> END
+// 构建常规对话工作流：START -> model -> END
 const workflow = new StateGraph(MessagesAnnotation)
   .addNode("model", callModel) // 添加模型调用节点
   .addEdge(START, "model")     // START 节点连接到 model
   .addEdge("model", END);      // model 节点连接到 END
 
+// Task 1: 创建RAG专用状态机节点 - 构建RAG工作流
+const ragWorkflow = new StateGraph(MessagesAnnotation)
+  .addNode("ragModel", callRAGModel) // 添加 RAG 模型调用节点
+  .addEdge(START, "ragModel")        // START 节点连接到 ragModel
+  .addEdge("ragModel", END);         // ragModel 节点连接到 END
+
 // === 记忆检查点配置 ===
 // 使用 MemorySaver 实现会话持久化，支持多线程对话
 const app = workflow.compile({ 
   checkpointer: new MemorySaver() 
+});
+
+// Task 1: 创建RAG专用状态机节点 - 编译RAG工作流为可执行应用
+const ragApp = ragWorkflow.compile({
+  checkpointer: new MemorySaver()
 });
 
 console.log("🏠 状态机和记忆检查点初始化完成");
@@ -165,6 +220,23 @@ export async function runTime(userText, threadId) {
   return { reply: last.content, threadId: config.configurable.thread_id };
 }
 
+/**
+ * RAG 模式的便捷执行函数，支持会话持久化
+ * @param {string} userText - 用户输入内容
+ * @param {string} threadId - 线程 ID，用于会话记忆
+ * @returns {Promise<{reply: string, threadId: string}>} RAG 回复和线程 ID
+ */
+// Task 2: 构建RAG工作流状态机 - 提供 RAG 专用执行函数
+export async function runRAG(userText, threadId) {
+  const config = { configurable: { thread_id: threadId ?? uuidv4() } };
+  const output = await ragApp.invoke(
+    { messages: [{ role: "user", content: userText }] },
+    config
+  );
+  const last = output.messages[output.messages.length - 1];
+  return { reply: last.content, threadId: config.configurable.thread_id };
+}
+
 // === CLI 交互主程序 ===
 /**
  * 主 CLI 交互函数，支持对话、RAG 检索和会话管理
@@ -173,7 +245,8 @@ async function main() {
   let threadId = uuidv4();
   console.log("🔍 当前线程:", threadId);
   console.log("💬 聊天开始。命令：/new 开新会话, /rag <问题> 知识库检索, /exit 退出");
-  console.log("💡 提示：在对话中遇到问题时，请检查网络连接和 API 密钥配置\n");
+  console.log("💡 提示：在对话中遇到问题时，请检查网络连接和 API 密钥配置");
+  console.log("🔥 新增：RAG模式现已支持会话持久化，可记住上下文！\n");
 
   // 创建 readline 接口用于用户输入
   const rl = readline.createInterface({ 
@@ -211,9 +284,14 @@ async function main() {
       if (text === "/help" || text === "/h") {
         console.log("\n📚 可用命令：");
         console.log("  /new        - 开始新的对话线程");
-        console.log("  /rag <问题>  - 使用 RAG 模式检索知识库");
+        console.log("  /rag <问题>  - 使用 RAG 模式检索知识库（支持会话记忆）");
         console.log("  /help (/h)  - 显示这个帮助信息");
-        console.log("  /exit       - 退出程序\n");
+        console.log("  /exit       - 退出程序");
+        // Task 5: 更新CLI命令处理 - 添加RAG会话持久化的说明
+        console.log("\n🔥 RAG功能升级：");
+        console.log("  - 现在支持会话记忆，可以记住上下文");
+        console.log("  - 支持多轮对话，可以说'之前提到的...'");
+        console.log("  - 与普通聊天共享同一个线程 ID\n");
         continue;
       }
 
@@ -227,13 +305,41 @@ async function main() {
         }
         try {
           console.log("🔍 正在检索知识库...");
-          const result = await ragChain.invoke({ 
-            input: question, 
-            chat_history: [] // RAG 模式不使用历史对话
-          });
-          // 处理 RAG 响应结果
-          const reply = result?.answer ?? result?.output_text ?? "⚠️ 未找到相关信息";
-          console.log("📚 RAG:", reply);
+          
+          // Task 3: 修改RAG调用逻辑 - 使用状态机驱动的 RAG 流式输出
+          const stream = await ragApp.streamEvents(
+            { messages: [{ role: "user", content: question }] },
+            { version: "v2", configurable: { thread_id: threadId } }
+          );
+
+          let first = true;
+          let hasContent = false;
+          for await (const ev of stream) {
+            if (ev.event === "on_chat_model_stream") {
+              const chunk = ev.data?.chunk;
+              const piece = Array.isArray(chunk?.content)
+                ? chunk.content
+                    .map((c) => (typeof c === "string" ? c : c?.text ?? ""))
+                    .join("")
+                : chunk?.content ?? "";
+              
+              if (first && piece) {
+                process.stdout.write("📚 RAG: ");
+                first = false;
+              }
+              if (piece) {
+                process.stdout.write(piece);
+                hasContent = true;
+              }
+            }
+          }
+          
+          if (!hasContent) {
+            console.log("📚 RAG: 抱歉，未找到相关信息。");
+          } else {
+            process.stdout.write("\n");
+          }
+          
         } catch (err) {
           console.error("❌ RAG 检索失败：", err.message);
           if (err.message.includes('API')) {

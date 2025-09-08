@@ -53,11 +53,13 @@ console.log(`🔗 ChromaDB 地址: ${CHROMA_URL}`);
 const retriever = await buildChromaRetriever({ 
   k: 30,
   chromaUrl: CHROMA_URL,
-  batchSize: 100 // 分批处理以避免大文件问题
+  batchSize: 200, // 写入批量大幅提升吞吐
+  embedSubBatchSize: 32, // 嵌入子批量，兼顾稳定性
+  preEmbedFilter: true, // 关闭预嵌入过滤，降低额外开销
+  resetCollection: true, // 首次或全量重建时为 true，增量可设为 false
 });
 
 console.log(`🔧 使用向量存储类型: ChromaDB (持久性存储)`);
-console.log(`📚 知识库初始化完成，检索器已准备好`);
 console.log(`📚 知识库初始化完成，检索器已准备好`);
 
 // === Prompt 模板定义 ===

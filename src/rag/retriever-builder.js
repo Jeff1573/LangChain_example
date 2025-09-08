@@ -2,14 +2,26 @@ import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { DocumentLoader } from "./document-loader.js";
 import { DocumentProcessor } from "./document-processor.js";
 import { VectorStoreFactory } from "./vector-store-factory.js";
-
 /**
  * 检索器构建器 - 优化为仅支持ChromaDB持久化存储，确保数据安全
+ * @param {Object} options 配置选项
+ * @param {string} options.knowledgeDir 知识库目录
+ * @param {string} options.embeddingModel 嵌入模型
+ * @param {Object} options.processorOptions 处理器选项
+ * @param {number} options.chunkSize 切分大小
+ * @param {number} options.chunkOverlap 切分重叠
+ * @param {Object} options.chromaOptions ChromaDB配置
+ * @param {number} options.batchSize 分批处理大小
+ * @param {string} options.collectionName 集合名称
+ * @param {string} options.chromaUrl ChromaDB地址
  */
 export class RetrieverBuilder {
   constructor(options = {}) {
+    // 知识库目录
     this.knowledgeDir = options.knowledgeDir || "knowledge";
-    this.embeddingModel = options.embeddingModel || "gemini-embedding-001";
+    // 嵌入模型
+    this.embeddingModel = options.embeddingModel || process.env.EMBEDDING_MODEL;
+    // 处理器选项
     // 针对大文件优化的处理参数
     this.processorOptions = {
       chunkSize: options.chunkSize || 1200,
@@ -26,7 +38,33 @@ export class RetrieverBuilder {
     this.documentProcessor = new DocumentProcessor(this.processorOptions);
     this.embeddings = new GoogleGenerativeAIEmbeddings({
       model: this.embeddingModel,
+      apiKey: process.env.GOOGLE_API_KEY,
     });
+  }
+
+  /**
+   * 测试嵌入模型是否正常工作
+   * @returns {Promise<boolean>} 测试是否成功
+   */
+  async testEmbeddings() {
+    try {
+      console.log(`🧪 正在测试嵌入模型: ${this.embeddingModel}`);
+      const testVector = await this.embeddings.embedQuery("测试文本");
+      
+      if (testVector && testVector.length > 0) {
+        console.log(`✅ 嵌入模型测试成功，向量维度: ${testVector.length}`);
+        return true;
+      } else {
+        console.error(`❌ 嵌入模型返回空向量`);
+        return false;
+      }
+    } catch (error) {
+      console.error(`❌ 嵌入模型测试失败: ${error.message}`);
+      if (error.message.includes('API')) {
+        console.error('💡 请检查 GOOGLE_API_KEY 是否正确配置');
+      }
+      return false;
+    }
   }
 
   /**
@@ -50,6 +88,13 @@ export class RetrieverBuilder {
     const chromaOptions = { ...this.chromaOptions, ...customOptions };
     
     console.log('📁 开始构建 ChromaDB 检索器...');
+    
+    // 步骤 0: 测试嵌入模型
+    console.log('🧪 正在测试嵌入模型...');
+    const embeddingTest = await this.testEmbeddings();
+    if (!embeddingTest) {
+      throw new Error('嵌入模型测试失败，请检查 Google API 配置');
+    }
     
     try {
       // 步骤 1: 加载原始文档

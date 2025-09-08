@@ -28,7 +28,7 @@ export class RetrieverBuilder {
    * @returns {Promise<Object>} 检索器实例
    */
   async buildMemoryRetriever(options = {}) {
-    const { k = 4 } = options;
+    const { k = 15 } = options;
     
     const rawDocs = await this.documentLoader.loadDocuments();
     const splitDocs = await this.documentProcessor.splitDocuments(rawDocs);
@@ -43,7 +43,7 @@ export class RetrieverBuilder {
    * @returns {Promise<Object>} 检索器实例
    */
   async buildChromaRetriever(options = {}) {
-    const { k = 20, ...chromaOptions } = options;
+    const { k = 30, ...chromaOptions } = options;
     
     const rawDocs = await this.documentLoader.loadDocuments();
     const splitDocs = await this.documentProcessor.splitDocuments(rawDocs);
@@ -64,7 +64,7 @@ export class RetrieverBuilder {
    * @returns {Object} 检索器实例
    */
   connectToExistingRetriever(options = {}) {
-    const { k = 4, ...chromaOptions } = options;
+    const { k = 15, ...chromaOptions } = options;
     
     const vectorStore = VectorStoreFactory.connectToExistingChroma(
       this.embeddings, 

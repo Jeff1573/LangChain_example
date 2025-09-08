@@ -11,15 +11,15 @@ export { VectorStoreFactory } from "./vector-store-factory.js";
 export { RetrieverBuilder } from "./retriever-builder.js";
 
 /** 向后兼容：构建一个内存型 Retriever（简单、零依赖、适合入门） */
-export async function buildInMemoryRetriever() {
+export async function buildInMemoryRetriever(options = {}) {
   const builder = new RetrieverBuilder();
-  return await builder.buildMemoryRetriever();
+  return await builder.buildMemoryRetriever(options);
 }
 
 /** 向后兼容：构建一个 ChromaDB 持久性 Retriever */
-export async function buildChromaRetriever() {
+export async function buildChromaRetriever(options = {}) {
   const builder = new RetrieverBuilder();
-  return await builder.buildChromaRetriever();
+  return await builder.buildChromaRetriever(options);
 }
 
 /** 向后兼容：连接到已存在的 ChromaDB 集合 */

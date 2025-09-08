@@ -46,9 +46,10 @@ const USE_CHROMA = process.env.USE_CHROMA === 'true';
 const CHROMA_URL = process.env.CHROMA_URL || 'http://localhost:8000';
 
 // 初始化检索器（支持内存和 ChromaDB 两种模式）
+// 使用更高的 k 值以获取更多相关结果
 const retriever = USE_CHROMA 
-  ? await buildChromaRetriever()
-  : await buildInMemoryRetriever();
+  ? await buildChromaRetriever({ k: 30 })
+  : await buildInMemoryRetriever({ k: 15 });
 
 console.log(`🔧 使用向量存储类型: ${USE_CHROMA ? 'ChromaDB (持久性)' : 'MemoryVectorStore (内存)'}`);
 console.log(`📚 知识库初始化完成，检索器已准备好`);
@@ -66,9 +67,10 @@ const ragPrompt = ChatPromptTemplate.fromMessages([
   [
     "system",
     [
-      "你是一个有帮助的智能助手。请严格基于给定的 CONTEXT 来回答问题。",
+      "你是一个有帮助的智能助手。请基于给定的 CONTEXT 来回答问题。",
       "如果答案不在上下文中，请诚实地说你不知道。",
       "请用中文回答。在回答结束后，请列出 SOURCES（去重）来自元数据。",
+      "请综合分析所有相关的上下文片段，提供完整的解答。",
       "请结合对话历史和检索到的上下文信息来提供连贯的回答。",
       "",
       "CONTEXT:",

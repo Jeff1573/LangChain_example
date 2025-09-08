@@ -1,7 +1,7 @@
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
 
-import translateExample from "./utils/translate_example.js";
-import chatBotExample from "./utils/chat_bot_example.js";
+import translateExample from "./src/utils/translate_example.js";
+import chatBotExample from "./src/utils/chat_bot_example.js";
 // import dotenv from "dotenv";
 // dotenv.config();
 

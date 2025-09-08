@@ -63,12 +63,13 @@ const retriever = USE_CHROMA
 
 console.log(`🔧 使用向量存储类型: ${USE_CHROMA ? 'ChromaDB (持久性)' : 'MemoryVectorStore (内存)'}`);
 
+// RAG
 const docChain = await createStuffDocumentsChain({
   llm, // 复用你现有的 Gemini Chat 模型实例
   prompt: ragPrompt, // 必须包含 {context}
   documentPrompt, // 把每段的 source 带上
 });
-
+// RAG 链
 const ragChain = await createRetrievalChain({
   retriever,
   combineDocsChain: docChain,

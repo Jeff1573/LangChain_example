@@ -62,6 +62,43 @@ export async function buildChromaRetriever() {
 }
 
 /** 
+ * 清理文档元数据，确保符合 ChromaDB 的类型要求
+ * @param {Array} docs 原始文档数组
+ */
+function sanitizeDocumentsMetadata(docs) {
+  return docs.map(doc => {
+    const sanitizedMetadata = {};
+    
+    // 只保留简单类型的元数据
+    if (doc.metadata) {
+      Object.entries(doc.metadata).forEach(([key, value]) => {
+        // 只保留字符串、数字、布尔值和 null 类型
+        if (
+          typeof value === 'string' || 
+          typeof value === 'number' || 
+          typeof value === 'boolean' || 
+          value === null
+        ) {
+          sanitizedMetadata[key] = value;
+        } else if (typeof value === 'object' && value !== null) {
+          // 对于对象类型，转换为字符串
+          sanitizedMetadata[key] = JSON.stringify(value);
+        }
+      });
+    }
+    
+    // 添加一些基本的元数据信息
+    sanitizedMetadata.source = doc.metadata?.source || 'unknown';
+    sanitizedMetadata.chunk_size = doc.pageContent?.length || 0;
+    
+    return {
+      ...doc,
+      metadata: sanitizedMetadata
+    };
+  });
+}
+
+/** 
  * 构建 ChromaDB 向量存储
  * @param {Array} docs 切分后的文档数组
  * @param {Object} embeddings 嵌入模型实例
@@ -92,9 +129,13 @@ async function buildChromaVectorStore(docs, embeddings, options = {}) {
       console.log(`集合 ${collectionName} 不存在，将创建新集合`);
     }
 
+    // 清理文档元数据，确保符合 ChromaDB 要求
+    const sanitizedDocs = sanitizeDocumentsMetadata(docs);
+    console.log(`已清理文档元数据，处理文档数量: ${sanitizedDocs.length}`);
+
     // 使用 LangChain 的 Chroma 向量存储
     const vectorStore = await Chroma.fromDocuments(
-      docs,
+      sanitizedDocs,
       embeddings,
       {
         collectionName,
@@ -106,7 +147,7 @@ async function buildChromaVectorStore(docs, embeddings, options = {}) {
     );
 
     console.log(`成功创建 ChromaDB 向量存储，集合名称: ${collectionName}`);
-    console.log(`已索引文档数量: ${docs.length}`);
+    console.log(`已索引文档数量: ${sanitizedDocs.length}`);
     
     return vectorStore;
   } catch (error) {

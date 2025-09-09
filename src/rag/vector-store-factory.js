@@ -84,11 +84,11 @@ export class VectorStoreFactory {
           const firstLen = batch[0]?.pageContent?.length ?? 0;
           const lastLen = batch[batch.length - 1]?.pageContent?.length ?? 0;
           console.log(`   ↪️ 批次首/尾文档长度: ${firstLen}/${lastLen}`);
-          // 子批量预嵌入过滤：可开关（preEmbedFilter）
+          // 子批量预嵌入，并在需要时进行过滤，保证向量与文档严格对齐
           const processDocsWithOptionalPreEmbed = async (docs) => {
-            if (!preEmbedFilter) return { cleanedDocs: docs, removedCount: 0 };
             const isArrayLike = (v) => (Array.isArray(v) || (typeof ArrayBuffer !== 'undefined' && ArrayBuffer.isView && ArrayBuffer.isView(v))) && typeof v.length === 'number';
-            const cleaned = [];
+            const cleanedDocs = [];
+            const cleanedVectors = [];
             let removed = 0;
             for (let s = 0; s < docs.length; s += embedSubBatchSize) {
               const sub = docs.slice(s, s + embedSubBatchSize);
@@ -100,18 +100,24 @@ export class VectorStoreFactory {
                 console.error(`   ❌ 子批嵌入失败: ${embedErr.message}`);
                 throw new Error(`嵌入计算失败（第${batchNumber}批 子批${Math.floor(s/embedSubBatchSize)+1}）: ${embedErr.message}`);
               }
-              vectors.forEach((vec, idx) => {
-                if (isArrayLike(vec) && vec.length > 0) {
-                  cleaned.push(sub[idx]);
+              for (let vi = 0; vi < vectors.length; vi += 1) {
+                const vec = vectors[vi];
+                if (!preEmbedFilter) {
+                  // 不过滤，全部写入
+                  cleanedDocs.push(sub[vi]);
+                  cleanedVectors.push(vec);
+                } else if (isArrayLike(vec) && vec.length > 0) {
+                  cleanedDocs.push(sub[vi]);
+                  cleanedVectors.push(vec);
                 } else {
                   removed += 1;
                 }
-              });
+              }
             }
-            return { cleanedDocs: cleaned, removedCount: removed };
+            return { cleanedDocs, cleanedVectors, removedCount: removed };
           };
 
-          const { cleanedDocs, removedCount } = await processDocsWithOptionalPreEmbed(batch);
+          const { cleanedDocs, cleanedVectors, removedCount } = await processDocsWithOptionalPreEmbed(batch);
           if (removedCount > 0) {
             console.warn(`   🧯 过滤空向量文档: ${removedCount} 条`);
           }
@@ -120,14 +126,14 @@ export class VectorStoreFactory {
             continue;
           }
 
-          // 写入：首批创建，其余批追加
+          // 写入：首批创建（连接集合），其余批追加；显式传入 embeddings，避免服务端缺省嵌入导致空向量
           if (!vectorStore) {
-            vectorStore = await Chroma.fromDocuments(
-              cleanedDocs,
+            // 使用已创建的客户端，避免 ChromaClient 的 path 参数弃用告警
+            vectorStore = await Chroma.fromExistingCollection(
               embeddings,
               {
                 collectionName,
-                url: chromaUrl,
+                index: client,
                 collectionMetadata: {
                   "hnsw:space": "cosine",
                   "created_at": new Date().toISOString(),
@@ -135,9 +141,10 @@ export class VectorStoreFactory {
                 },
               }
             );
+            await vectorStore.addVectors(cleanedVectors, cleanedDocs);
             insertedTotal += cleanedDocs.length;
           } else {
-            await vectorStore.addDocuments(cleanedDocs);
+            await vectorStore.addVectors(cleanedVectors, cleanedDocs);
             insertedTotal += cleanedDocs.length;
           }
           
